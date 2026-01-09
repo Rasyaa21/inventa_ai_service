@@ -14,7 +14,7 @@ from .features import (
 )
 from .forecast import train_sarimax_all_products
 from .llm import (
-    get_openai_client,
+    get_llm_client,
     generate_complete_forecast_with_batch_llm
 )
 from .api_schema import ForecastRequest
@@ -149,7 +149,7 @@ def run_forecast_pipeline(request: ForecastRequest) -> Dict[str, Any]:
 
     # Initialize OpenAI client
     try:
-        client = get_openai_client()
+        client = get_llm_client()
     except Exception:
         client = None
 
@@ -159,7 +159,7 @@ def run_forecast_pipeline(request: ForecastRequest) -> Dict[str, Any]:
         results=results,
         scores_df=scores_df,
         use_llm=client is not None,
-        llm_model="gpt-4o-mini",
+        llm_model="deepseek-r1-distill-llama-70b",
         batch_size=3,
         client=client
     )

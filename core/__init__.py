@@ -51,7 +51,7 @@ from .forecast import (
 
 # LLM exports
 from .llm import (
-    get_openai_client,
+    get_llm_client,
     generate_batch_llm_analysis,
     generate_rule_based_fallback,
     generate_complete_forecast_with_batch_llm,
@@ -100,7 +100,7 @@ __all__ = [
     "generate_portfolio_insights",
     
     # LLM
-    "get_openai_client",
+    "get_llm_client",
     "generate_batch_llm_analysis",
     "generate_rule_based_fallback",
     "generate_complete_forecast_with_batch_llm",

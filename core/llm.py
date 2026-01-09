@@ -4,26 +4,26 @@ LLM analysis module for inventory recommendations.
 import time
 import pandas as pd
 from typing import List, Dict, Any, Optional
-from openai import OpenAI
+from groq import Groq
 import os
 
 
-def get_openai_client(api_key: Optional[str] = None) -> OpenAI:
-    """Get OpenAI client with API key from environment or parameter."""
+def get_llm_client(api_key: Optional[str] = None) -> Groq:
+    """Get Groq client with API key from environment or parameter."""
     if api_key is None:
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = os.getenv("GROQ_API_KEY")
     
     if not api_key:
-        raise ValueError("OpenAI API key not found. Set OPENAI_API_KEY environment variable or pass api_key parameter.")
+        raise ValueError("Groq API key not found. Set GROQ_API_KEY environment variable or pass api_key parameter.")
     
-    return OpenAI(api_key=api_key)
+    return Groq(api_key=api_key)
 
 
 def generate_batch_llm_analysis(
     products_data: List[Dict[str, Any]], 
-    model: str = "gpt-4o-mini", 
+    model: str = "deepseek-r1-distill-llama-70b", 
     batch_size: int = 3,
-    client: Optional[OpenAI] = None
+    client: Optional[Groq] = None
 ) -> tuple[List[Dict[str, Any]], int]:
     """
     Generate LLM analysis untuk multiple products sekaligus (batch).
@@ -39,7 +39,7 @@ def generate_batch_llm_analysis(
         Tuple of (results list, total_tokens)
     """
     if client is None:
-        client = get_openai_client()
+        client = get_llm_client()
     
     results = []
     total_tokens = 0
@@ -181,9 +181,9 @@ def generate_complete_forecast_with_batch_llm(
     results,
     scores_df,
     use_llm: bool = True,
-    llm_model: str = "gpt-4o-mini",
+    llm_model: str = "deepseek-r1-distill-llama-70b",
     batch_size: int = 3,
-    client: Optional[OpenAI] = None
+    client: Optional[Groq] = None
 ) -> Dict[str, Any]:
     """
     Enhanced version dengan:
@@ -393,14 +393,14 @@ def generate_complete_forecast_with_batch_llm(
 
 def generate_portfolio_llm_analysis(
     products_data: List[Dict[str, Any]], 
-    model: str = "gpt-4o-mini", 
-    client: Optional[OpenAI] = None
+    model: str = "deepseek-r1-distill-llama-70b", 
+    client: Optional[Groq] = None
 ) -> tuple[Dict[str, Any], int]:
     """
     Generate high-level portfolio insights summary.
     """
     if client is None:
-        client = get_openai_client()
+        client = get_llm_client()
 
     try:
         # Filter critical/high priority items for the summary to save tokens and focus attention
