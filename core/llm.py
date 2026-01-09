@@ -311,9 +311,8 @@ def generate_complete_forecast_with_batch_llm(
         
         output_products.append(product_obj)
     
-            print(f"✅ {len(output_products)} produk dianalisis")
+    print(f"✅ {len(output_products)} produk dianalisis")
     
-    # Step 2: Batch LLM Analysis
     if use_llm:
         print(f"\n🤖 Step 2: Running batch LLM analysis (batch size={batch_size})...")
         try:
@@ -403,36 +402,39 @@ def generate_portfolio_llm_analysis(
     if client is None:
         client = get_openai_client()
 
-    # Filter critical/high priority items for the summary to save tokens and focus attention
-    priority_items = [
-        p for p in products_data 
-        if p['business_priority']['priority_tier'] in ['CRITICAL', 'HIGH']
-    ]
-    
-    # If too few high priority, add some medium
-    if len(priority_items) < 3:
-        medium_items = [
+    try:
+        # Filter critical/high priority items for the summary to save tokens and focus attention
+        priority_items = [
             p for p in products_data 
-            if p['business_priority']['priority_tier'] == 'MEDIUM'
-        ][:3]
-        priority_items.extend(medium_items)
-    
-    # Prepare summary data for prompt
-    items_summary = []
-    for p in priority_items:
-        items_summary.append(
-            f"- {p['product_name']}: Risk {p['stock_analysis']['risk_level']}, "
-            f"Trend {p['business_insights']['sales_patterns']['trend']}, "
-            f"Action {p['recommendation']['action']} ({p['recommendation']['reason']})"
-        )
-    
-    overall_stats = {
-        "total": len(products_data),
-        "high_risk": sum(1 for p in products_data if p['stock_analysis']['risk_level'] == 'HIGH'),
-        "restock_needed": sum(1 for p in products_data if p['recommendation']['action'] == 'RESTOCK')
-    }
+            if p['business_priority']['priority_tier'] in ['CRITICAL', 'HIGH']
+        ]
+        
+        # If too few high priority, add some medium
+        if len(priority_items) < 3:
+            medium_items = [
+                p for p in products_data 
+                if p['business_priority']['priority_tier'] == 'MEDIUM'
+            ][:3]
+            priority_items.extend(medium_items)
+        
+        # Prepare summary data for prompt
+        items_summary = []
+        for p in priority_items:
+            # Safe access to nested keys
+            trend = p.get('business_insights', {}).get('sales_patterns', {}).get('trend', 'unknown')
+            items_summary.append(
+                f"- {p['product_name']}: Risk {p['stock_analysis']['risk_level']}, "
+                f"Trend {trend}, "
+                f"Action {p['recommendation']['action']} ({p['recommendation']['reason']})"
+            )
+        
+        overall_stats = {
+            "total": len(products_data),
+            "high_risk": sum(1 for p in products_data if p['stock_analysis']['risk_level'] == 'HIGH'),
+            "restock_needed": sum(1 for p in products_data if p['recommendation']['action'] == 'RESTOCK')
+        }
 
-    prompt = f"""
+        prompt = f"""
 Anda adalah asisten AI untuk manajemen inventori. Berikan "AI Insight Summary" level portofolio singkat berdasarkan data berikut:
 
 STATISTIK:
@@ -456,21 +458,20 @@ Buat ringkasan eksekutif dalam JSON format dengan struktur persis seperti ini:
 
 CONTOH OUTPUT YANG DIHARAPKAN (isi konten sesuaikan data):
 {{
-  "pattern_trend_summary": "Stable demand with weekend peaks • 12% increase in dairy sales",
+  "pattern_trend_summary": "Pattern: Stable demand with weekend peaks • Trend: 12% increase in dairy sales",
   "priority_actions": {{
-      "urgent": "Restock Dark Chocolate Bar and Greek Yogurt (critical stock)",
-      "medium": "Consider restocking dairy alternatives before weekend",
-      "low": "Monitor organic produce inventory for seasonal changes"
+      "urgent": "Urgent: Restock Dark Chocolate Bar and Greek Yogurt (critical stock)",
+      "medium": "Medium: Consider restocking dairy alternatives before weekend",
+      "low": "Low: Monitor organic produce inventory for seasonal changes"
   }}
 }}
 
 PENTING:
 - Gunakan Bahasa Bahasa Indonesia
-- Gabungkan Pattern dan Trend dengan separator '•' jika ada dua poin berbeda.
+- Gabungkan "Pattern: [Pola]" dan "Trend: [Trend]" dengan separator '•'.
 - Jangan bertele-tele.
 """
 
-    try:
         response = client.chat.completions.create(
             model=model,
             messages=[
@@ -490,5 +491,53 @@ PENTING:
 
     except Exception as e:
         print(f"⚠️ Portfolio summary generation failed: {e}")
-        return None, 0
+        return generate_rule_based_portfolio_summary(products_data), 0
+
+
+def generate_rule_based_portfolio_summary(products_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Generate rule-based summary when LLM fails."""
+    
+    # 1. Calculate stats
+    high_risk_count = sum(1 for p in products_data if p['stock_analysis']['risk_level'] == 'HIGH')
+    restock_count = sum(1 for p in products_data if p['recommendation']['action'] == 'RESTOCK')
+    
+    # 2. Get top priority items per tier
+    sorted_products = sorted(
+        products_data, 
+        key=lambda x: x['business_priority']['priority_score'], 
+        reverse=True
+    )
+    
+    urgent_items = [p for p in sorted_products if p['business_priority']['priority_tier'] in ['CRITICAL', 'HIGH']]
+    medium_items = [p for p in sorted_products if p['business_priority']['priority_tier'] == 'MEDIUM']
+    low_items = [p for p in sorted_products if p['business_priority']['priority_tier'] == 'LOW']
+    
+    # 3. Construct Summary Strings
+    pattern_summary = "Pattern: Stable demand with localized peaks"
+    trend_summary = f"Trend: {restock_count} products need restocking"
+    
+    # 4. Construct Actions
+    actions = {}
+    
+    if urgent_items:
+        p = urgent_items[0]
+        actions["urgent"] = f"Urgent: Restock {p['product_name']} ({p['stock_analysis']['days_until_stockout']} days left)"
+    else:
+        actions["urgent"] = "Urgent: No critical items at the moment"
+        
+    if medium_items:
+        p = medium_items[0]
+        actions["medium"] = f"Medium: Monitor {p['product_name']} for {p['recommendation']['action'].lower()}"
+    else:
+        actions["medium"] = "Medium: Review safety stock levels"
+        
+    if low_items:
+        actions["low"] = "Low: Routine inventory check"
+    else:
+        actions["low"] = "Low: All items are high priority"
+
+    return {
+        "pattern_trend_summary": f"{pattern_summary} • {trend_summary}",
+        "priority_actions": actions
+    }
 
